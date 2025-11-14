@@ -419,8 +419,12 @@ const HTML_CONTENT = `
         .tab-content.active { display: block; }
         .success-msg { background: #d4edda; color: #155724; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #c3e6cb; }
         .error-msg { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #f5c6cb; }
-    </style>  
-</head>  
+        .copy-btn { background: none; border: none; color: #667eea; cursor: pointer; font-size: 16px; padding: 4px 8px; margin-left: 8px; transition: all 0.2s ease; border-radius: 4px; }
+        .copy-btn:hover { background: #f0f0f0; transform: scale(1.1); }
+        .copy-btn:active { transform: scale(0.95); }
+        .copy-btn.copied { color: #28a745; }
+    </style>
+</head>
 <body>
     <div class="container">
         <div class="header">
@@ -572,7 +576,10 @@ const HTML_CONTENT = `
                 if (item.error) {
                     tableHTML += \`
                         <tr>
-                            <td class="key-cell" title="\${item.key}">\${item.key}</td>
+                            <td class="key-cell" title="\${item.key}">
+                                <span>\${item.key}</span>
+                                <button class="copy-btn" onclick="copyKey('\${item.id}')" title="复制完整Key">📋</button>
+                            </td>
                             <td colspan="5" class="error-row">加载失败: \${item.error}</td>
                             <td style="text-align: center;">
                                 <button class="btn btn-primary" onclick="refreshSingleKey('\${item.id}')" style="padding: 6px 12px; font-size: 12px; margin-right: 5px;">刷新</button>
@@ -584,7 +591,10 @@ const HTML_CONTENT = `
                     const remaining = Math.max(0, item.totalAllowance - item.orgTotalTokensUsed);
                     tableHTML += \`
                         <tr id="key-row-\${item.id}">
-                            <td class="key-cell" title="\${item.key}">\${item.key}</td>
+                            <td class="key-cell" title="\${item.key}">
+                                <span>\${item.key}</span>
+                                <button class="copy-btn" onclick="copyKey('\${item.id}')" title="复制完整Key">📋</button>
+                            </td>
                             <td>\${item.startDate}</td>
                             <td>\${item.endDate}</td>
                             <td class="number">\${formatNumber(item.totalAllowance)}</td>
@@ -610,6 +620,39 @@ const HTML_CONTENT = `
   
   
         document.addEventListener('DOMContentLoaded', loadData);
+
+        // Copy Key Function
+        async function copyKey(id) {
+            try {
+                // Fetch the full unmasked key from the server
+                const response = await fetch(\`/api/keys/\${id}/full\`);
+                const result = await response.json();
+                
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || '获取完整Key失败');
+                }
+                
+                // Copy the full key to clipboard
+                await navigator.clipboard.writeText(result.key);
+                
+                // Find the button that was clicked and show feedback
+                const buttons = document.querySelectorAll('.copy-btn');
+                buttons.forEach(btn => {
+                    if (btn.getAttribute('onclick').includes(id)) {
+                        const originalText = btn.textContent;
+                        btn.textContent = '✓';
+                        btn.classList.add('copied');
+                        
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.classList.remove('copied');
+                        }, 1500);
+                    }
+                });
+            } catch (error) {
+                alert('复制失败: ' + error.message);
+            }
+        }
 
         // Modal and Key Management Functions
         function openManageModal() {
@@ -1261,6 +1304,25 @@ async function handleExportKeys(req: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * Handles GET /api/keys/:id/full - returns the full unmasked key for a specific ID.
+ */
+async function handleGetFullKey(pathname: string, env: Env): Promise<Response> {
+  try {
+    const id = pathname.split("/api/keys/")[1]?.split("/")[0];
+    if (!id) return createErrorResponse("Key ID is required", 400);
+
+    const fullKey = await getKeyById(env.DB, id);
+    if (!fullKey) return createErrorResponse("Key not found", 404);
+
+    return createJsonResponse({ success: true, key: fullKey });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error getting full key:', errorMessage);
+    return createErrorResponse(errorMessage, 500);
+  }
+}
+
+/**
  * Handles POST /api/keys/:id/refresh - refreshes data for a single API key.
  */
 async function handleRefreshSingleKey(pathname: string, env: Env): Promise<Response> {
@@ -1348,6 +1410,11 @@ async function handler(req: Request, env: Env): Promise<Response> {
   // Route: POST /api/keys/:id/refresh - Refresh single key
   if (url.pathname.match(/^\/api\/keys\/.+\/refresh$/) && req.method === "POST") {
     return await handleRefreshSingleKey(url.pathname, env);
+  }
+
+  // Route: GET /api/keys/:id/full - Get full unmasked key
+  if (url.pathname.match(/^\/api\/keys\/.+\/full$/) && req.method === "GET") {
+    return await handleGetFullKey(url.pathname, env);
   }
 
   // 404 for all other routes
