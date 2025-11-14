@@ -52,7 +52,7 @@ interface ApiResponse {
 
 
 interface Env {
-  API_KEYS: KVNamespace;
+  DB: D1Database;
   EXPORT_PASSWORD: string;
 }
 
@@ -116,32 +116,55 @@ const serverState = new ServerState();
 
 // ==================== Database Operations ====================
 
-async function getAllKeys(kv: KVNamespace): Promise<ApiKey[]> {
-  const keys: ApiKey[] = [];
-  const list = await kv.list({ prefix: "api_keys:" });
-
-  for (const key of list.keys) {
-    const id = key.name.replace('api_keys:', '');
-    const value = await kv.get(key.name);
-    if (value) {
-      keys.push({ id, key: value });
-    }
-  }
-
-  return keys;
+/**
+ * 获取所有 API Keys（使用 D1）
+ */
+async function getAllKeys(db: D1Database): Promise<ApiKey[]> {
+  const result = await db.prepare(
+    'SELECT id, key FROM api_keys ORDER BY created_at DESC'
+  ).all<ApiKey>();
+  
+  return result.results || [];
 }
 
-async function addKey(kv: KVNamespace, id: string, key: string): Promise<void> {
-  await kv.put(`api_keys:${id}`, key);
+/**
+ * 添加新的 API Key（使用 D1）
+ */
+async function addKey(db: D1Database, id: string, key: string): Promise<void> {
+  await db.prepare(
+    'INSERT INTO api_keys (id, key) VALUES (?, ?)'
+  ).bind(id, key).run();
 }
 
-async function deleteKey(kv: KVNamespace, id: string): Promise<void> {
-  await kv.delete(`api_keys:${id}`);
+/**
+ * 删除指定的 API Key（使用 D1）
+ */
+async function deleteKey(db: D1Database, id: string): Promise<void> {
+  await db.prepare(
+    'DELETE FROM api_keys WHERE id = ?'
+  ).bind(id).run();
 }
 
-async function apiKeyExists(kv: KVNamespace, key: string): Promise<boolean> {
-  const keys = await getAllKeys(kv);
-  return keys.some(k => k.key === key);
+/**
+ * 检查 API Key 是否已存在（使用 D1）
+ */
+async function apiKeyExists(db: D1Database, key: string): Promise<boolean> {
+  const result = await db.prepare(
+    'SELECT COUNT(*) as count FROM api_keys WHERE key = ?'
+  ).bind(key).first<{ count: number }>();
+  
+  return (result?.count || 0) > 0;
+}
+
+/**
+ * 根据 ID 获取 API Key（使用 D1）
+ */
+async function getKeyById(db: D1Database, id: string): Promise<string | null> {
+  const result = await db.prepare(
+    'SELECT key FROM api_keys WHERE id = ?'
+  ).bind(id).first<{ key: string }>();
+  
+  return result?.key || null;
 }
 
 // ==================== Utility Functions ====================
@@ -943,8 +966,8 @@ const isApiUsageData = (result: ApiKeyResult): result is ApiUsageData => !('erro
 /**
  * Aggregates data from all configured API keys.
  */
-async function getAggregatedData(kv: KVNamespace): Promise<AggregatedResponse> {
-  const keyPairs = await getAllKeys(kv);
+async function getAggregatedData(db: D1Database): Promise<AggregatedResponse> {
+  const keyPairs = await getAllKeys(db);
   const beijingTime = getBeijingTime();
   const emptyResponse = {
     update_time: formatBeijingTime(beijingTime, "yyyy-MM-dd HH:mm:ss"),
@@ -1025,7 +1048,7 @@ async function autoRefreshData(env: Env) {
   serverState.startUpdate();
   
   try {
-    const data = await getAggregatedData(env.API_KEYS);
+    const data = await getAggregatedData(env.DB);
     serverState.updateCache(data);
     console.log(`[${timestamp}] Data updated successfully.`);
   } catch (error) {
@@ -1102,7 +1125,7 @@ function handleLogout(req: Request): Response {
  */
 async function handleGetData(env: Env): Promise<Response> {
   try {
-    const data = await getAggregatedData(env.API_KEYS);
+    const data = await getAggregatedData(env.DB);
     return createJsonResponse(data);
   } catch (error) {
     console.error('Error getting data:', error);
@@ -1116,7 +1139,7 @@ async function handleGetData(env: Env): Promise<Response> {
  */
 async function handleGetKeys(env: Env): Promise<Response> {
   try {
-    const keys = await getAllKeys(env.API_KEYS);
+    const keys = await getAllKeys(env.DB);
     return createJsonResponse(keys);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1147,7 +1170,7 @@ async function handleAddKeys(req: Request, env: Env): Promise<Response> {
 
 async function handleBatchImport(items: unknown[], env: Env): Promise<Response> {
   let added = 0, skipped = 0;
-  const existingKeys = new Set((await getAllKeys(env.API_KEYS)).map(k => k.key));
+  const existingKeys = new Set((await getAllKeys(env.DB)).map(k => k.key));
 
   for (const item of items) {
     if (!item || typeof item !== 'object' || !('key' in item)) continue;
@@ -1159,7 +1182,7 @@ async function handleBatchImport(items: unknown[], env: Env): Promise<Response> 
     }
 
     const id = `key-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    await addKey(env.API_KEYS, id, key);
+    await addKey(env.DB, id, key);
     existingKeys.add(key);
     added++;
   }
@@ -1176,10 +1199,10 @@ async function handleSingleKeyAdd(body: unknown, env: Env): Promise<Response> {
 
   const { key } = body as { key: string };
   if (!key) return createErrorResponse("key cannot be empty", 400);
-  if (await apiKeyExists(env.API_KEYS, key)) return createErrorResponse("API key already exists", 409);
+  if (await apiKeyExists(env.DB, key)) return createErrorResponse("API key already exists", 409);
 
   const id = `key-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  await addKey(env.API_KEYS, id, key);
+  await addKey(env.DB, id, key);
   serverState.clearCache();
   
   return createJsonResponse({ success: true });
@@ -1189,7 +1212,7 @@ async function handleDeleteKey(pathname: string, env: Env): Promise<Response> {
   const id = pathname.split("/api/keys/")[1];
   if (!id) return createErrorResponse("Key ID is required", 400);
 
-  await deleteKey(env.API_KEYS, id);
+  await deleteKey(env.DB, id);
   serverState.clearCache();
   
   return createJsonResponse({ success: true });
@@ -1202,7 +1225,7 @@ async function handleBatchDeleteKeys(req: Request, env: Env): Promise<Response> 
       return createErrorResponse("ids array is required", 400);
     }
 
-    await Promise.all(ids.map(id => deleteKey(env.API_KEYS, id).catch(() => {})));
+    await Promise.all(ids.map(id => deleteKey(env.DB, id).catch(() => {})));
     serverState.clearCache();
 
     return createJsonResponse({ success: true, deleted: ids.length });
@@ -1224,7 +1247,7 @@ async function handleExportKeys(req: Request, env: Env): Promise<Response> {
     }
 
     // Get all keys (unmasked)
-    const keys = await getAllKeys(env.API_KEYS);
+    const keys = await getAllKeys(env.DB);
 
     return createJsonResponse({
       success: true,
@@ -1249,7 +1272,7 @@ async function handleRefreshSingleKey(pathname: string, env: Env): Promise<Respo
     }
 
     // Get the key from database
-    const key = await env.API_KEYS.get(`api_keys:${id}`);
+    const key = await getKeyById(env.DB, id);
     
     if (!key) {
       return createErrorResponse("Key not found", 404);

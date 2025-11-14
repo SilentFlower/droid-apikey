@@ -1,214 +1,235 @@
-# droid-apikey
+# API 余额监控看板 - Cloudflare Workers 版本
 
-API Key 余额监控看板 - Cloudflare Workers 版本
+基于 Cloudflare Workers + D1 数据库的 API Key 余额监控系统，支持实时查询、批量管理和数据导出。
 
-一个用于监控和管理 Factory AI API Keys 使用情况的 Web 应用，部署在 Cloudflare Workers 上。
+## ✨ 特性
 
-## 功能特性
+- 🚀 **强一致性存储**：使用 D1 数据库，写入后立即可读
+- 📊 **实时监控**：实时查询 API Key 使用情况和余额
+- 🔐 **安全认证**：支持密码登录和会话管理
+- 📥 **批量管理**：支持批量导入、导出和删除 API Keys
+- 🎨 **美观界面**：现代化的响应式 Web 界面
+- ⚡ **高性能**：基于 Cloudflare Workers 边缘计算
+- 🔄 **自动刷新**：支持定时自动刷新数据
 
-- 📊 实时监控所有 API Key 的余额和使用情况
-- 📥 批量导入/导出 API Keys
-- 🗑️ 批量删除无效或零余额的 Keys
-- 🔄 单个或全局刷新数据
-- 🔐 密码保护的 Key 导出功能
-- 💾 使用 Cloudflare KV 存储数据
-- 🌐 全球 CDN 加速访问
+## 🏗️ 技术栈
 
-## 部署步骤
+- **运行时**：Cloudflare Workers
+- **数据库**：Cloudflare D1 (SQLite)
+- **语言**：TypeScript
+- **部署工具**：Wrangler
 
-### 1. 安装依赖
+## 📦 快速开始
+
+### 前置要求
+
+- Node.js 16+
+- npm 或 yarn
+- Cloudflare 账号
+
+### 1. 克隆项目
+
+```bash
+git clone <repository-url>
+cd droid-apikey
+```
+
+### 2. 安装依赖
 
 ```bash
 npm install
 ```
 
-### 2. 创建 KV Namespace
+### 3. 创建 D1 数据库
 
 ```bash
-# 创建生产环境 KV namespace
-npx wrangler kv:namespace create API_KEYS
+# 创建生产环境数据库
+npm run d1:create
 
-# （可选）创建开发环境 KV namespace
-npx wrangler kv:namespace create API_KEYS --preview
+# 记录返回的 database_id
 ```
 
-命令执行后会输出类似以下内容：
-```
-🌀 Creating namespace with title "droid-apikey-API_KEYS"
-✨ Success!
-Add the following to your configuration file in your kv_namespaces array:
-{ binding = "API_KEYS", id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
-```
+### 4. 配置 wrangler.toml
 
-### 3. 配置 wrangler.toml
-
-将上一步获得的 KV namespace ID 填入 `wrangler.toml` 文件：
+将创建数据库时返回的 `database_id` 填入 [`wrangler.toml`](wrangler.toml:7)：
 
 ```toml
-[[kv_namespaces]]
-binding = "API_KEYS"
-id = "你的KV_NAMESPACE_ID"  # 替换为实际的 ID
+[[d1_databases]]
+binding = "DB"
+database_name = "droid-apikey-db"
+database_id = "YOUR_D1_DATABASE_ID"  # 替换为实际的 database_id
 ```
 
-同时可以修改导出密码（可选）：
-
-```toml
-[vars]
-EXPORT_PASSWORD = "your_secure_password"  # 修改为你的密码
-```
-
-### 4. 部署到 Cloudflare Workers
+### 5. 运行数据库迁移
 
 ```bash
-# 部署到生产环境
-npx wrangler deploy
+# 生产环境
+npm run d1:migrate
 
-# 或使用 npm script
+# 本地开发环境
+npm run d1:migrate:local
+```
+
+### 6. 本地开发
+
+```bash
+# 使用远程 D1 数据库
+npm run dev
+
+# 使用本地 D1 数据库
+npm run dev:local
+```
+
+访问 http://localhost:8787
+
+### 7. 部署到生产环境
+
+```bash
 npm run deploy
 ```
 
-部署成功后，会显示你的 Workers URL，例如：
-```
-Published droid-apikey (x.xx sec)
-  https://droid-apikey.your-subdomain.workers.dev
-```
+## 🔄 从 KV 迁移到 D1
 
-### 5. 本地开发（可选）
+如果你之前使用的是 KV 存储，请参考 [迁移指南](MIGRATION_GUIDE.md) 进行数据迁移。
+
+**迁移原因：**
+- KV 是最终一致性存储，写入后需要约 60 秒才能全球同步
+- D1 提供强一致性，写入后立即可读
+- D1 支持 SQL 查询，功能更强大
+
+## 📝 使用说明
+
+### 登录
+
+默认账号和密码都是 `wrangler.toml` 中配置的 `EXPORT_PASSWORD`（默认：`zhaoweihao98`）
+
+**⚠️ 重要：** 部署前请修改密码！
+
+### 管理 API Keys
+
+1. **添加 Key**：点击"Key 管理"按钮，在批量导入框中输入 Keys（每行一个）
+2. **查看余额**：主界面显示所有 Keys 的余额和使用情况
+3. **刷新数据**：点击"刷新数据"按钮更新所有 Keys 的信息
+4. **删除 Key**：
+   - 单个删除：点击表格中的"删除"按钮
+   - 批量删除无效 Key：点击"删除无效"按钮
+   - 删除所有 Key：点击"删除所有"按钮
+5. **导出 Keys**：点击"导出Key"按钮，输入密码后下载
+
+### API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/` | GET | 主页面 |
+| `/api/login` | POST | 登录 |
+| `/api/logout` | POST | 登出 |
+| `/api/data` | GET | 获取所有 Keys 的使用数据 |
+| `/api/keys` | GET | 获取所有 Keys |
+| `/api/keys` | POST | 添加 Key（支持批量） |
+| `/api/keys/:id` | DELETE | 删除指定 Key |
+| `/api/keys/:id/refresh` | POST | 刷新指定 Key 的数据 |
+| `/api/keys/batch-delete` | POST | 批量删除 Keys |
+| `/api/keys/export` | POST | 导出所有 Keys（需要密码） |
+
+## 🛠️ 开发命令
 
 ```bash
-# 启动本地开发服务器
+# 本地开发（使用远程 D1）
 npm run dev
 
-# 或
-npx wrangler dev
+# 本地开发（使用本地 D1）
+npm run dev:local
+
+# 部署到生产环境
+npm run deploy
+
+# 查看实时日志
+npm run tail
+
+# 创建 D1 数据库
+npm run d1:create
+
+# 运行数据库迁移
+npm run d1:migrate
+
+# 查询 D1 数据库
+npm run d1:query "SELECT * FROM api_keys LIMIT 10"
+
+# 备份 D1 数据库
+npm run d1:backup
 ```
 
-本地开发服务器会在 `http://localhost:8787` 启动。
-
-## 使用说明
-
-### 添加 API Keys
-
-1. 访问部署后的 URL
-2. 点击右上角的 "Key 管理" 按钮
-3. 在文本框中输入 API Keys（每行一个）
-4. 点击 "批量导入" 按钮
-
-支持两种格式：
-- 纯 Key：`fk-xxxxx`（系统会自动生成 ID）
-- ID:Key 格式：`my-key-1:fk-xxxxx`
-
-### 导出 API Keys
-
-1. 点击右下角的 "📥 导出Key" 按钮
-2. 输入导出密码（默认：`admin123`，可在 `wrangler.toml` 中修改）
-3. Keys 会以文本文件形式下载
-
-### 删除 Keys
-
-- **删除单个 Key**：点击表格中对应行的 "删除" 按钮
-- **删除无效 Key**：点击 "🗑️ 删除无效" 按钮（删除余额为 0 的 Keys）
-- **删除所有 Key**：点击 "🗑️ 删除所有" 按钮（需要二次确认）
-
-### 刷新数据
-
-- **刷新所有数据**：点击右下角的 "🔄 刷新数据" 按钮
-- **刷新单个 Key**：点击表格中对应行的 "刷新" 按钮
-
-## 配置选项
-
-在 `src/index.ts` 中可以修改以下配置：
-
-```typescript
-const CONFIG = {
-  API_ENDPOINT: 'https://app.factory.ai/api/organization/members/chat-usage',
-  USER_AGENT: 'Mozilla/5.0 ...',
-  TIMEZONE_OFFSET_HOURS: 8,  // 时区偏移（北京时间 UTC+8）
-  KEY_MASK_PREFIX_LENGTH: 4,  // Key 显示的前缀长度
-  KEY_MASK_SUFFIX_LENGTH: 4,  // Key 显示的后缀长度
-  AUTO_REFRESH_INTERVAL_SECONDS: 60,  // 自动刷新间隔（秒）
-};
-```
-
-## 自动刷新（Cron Triggers）
-
-如果需要定时自动刷新数据，可以在 `wrangler.toml` 中添加 Cron Triggers：
-
-```toml
-[triggers]
-crons = ["*/5 * * * *"]  # 每 5 分钟刷新一次
-```
-
-常用的 Cron 表达式：
-- `*/5 * * * *` - 每 5 分钟
-- `*/15 * * * *` - 每 15 分钟
-- `0 * * * *` - 每小时
-- `0 0 * * *` - 每天午夜
-
-## 项目结构
+## 📁 项目结构
 
 ```
 droid-apikey/
 ├── src/
-│   └── index.ts          # 主应用代码（Cloudflare Workers 版本）
-├── main.ts               # 原 Deno 版本（保留作为参考）
-├── wrangler.toml         # Cloudflare Workers 配置
-├── package.json          # 项目依赖
-├── tsconfig.json         # TypeScript 配置
-└── README.md             # 项目文档
+│   └── index.ts              # 主应用代码
+├── migrations/
+│   └── 0001_create_api_keys_table.sql  # 数据库迁移脚本
+├── scripts/
+│   └── migrate_kv_to_d1.ts   # KV 到 D1 迁移脚本
+├── wrangler.toml             # Cloudflare Workers 配置
+├── package.json              # 项目依赖和脚本
+├── tsconfig.json             # TypeScript 配置
+├── MIGRATION_GUIDE.md        # 迁移指南
+└── README.md                 # 本文件
 ```
 
-## 技术栈
+## 🔒 安全建议
 
-- **运行时**: Cloudflare Workers
-- **存储**: Cloudflare KV
-- **语言**: TypeScript
-- **构建工具**: Wrangler
+1. **修改默认密码**：在 [`wrangler.toml`](wrangler.toml:12) 中修改 `EXPORT_PASSWORD`
+2. **使用环境变量**：生产环境建议使用 Cloudflare Workers 的 Secrets：
+   ```bash
+   npx wrangler secret put EXPORT_PASSWORD
+   ```
+3. **限制访问**：考虑添加 IP 白名单或其他访问控制
+4. **定期备份**：定期备份 D1 数据库
 
-## 从 Deno 版本迁移
+## 📊 性能优化
 
-如果你之前使用的是 Deno 版本（`main.ts`），数据不会自动迁移。你需要：
+- ✅ 使用 D1 数据库索引加速查询
+- ✅ 批量处理 API 请求，避免速率限制
+- ✅ 服务端缓存减少重复计算
+- ✅ 边缘计算降低延迟
 
-1. 从 Deno 版本导出所有 Keys
-2. 在 Cloudflare Workers 版本中重新导入
+## 🐛 故障排查
 
-## 常见问题
+### 问题：数据库连接失败
 
-### Q: 部署后访问显示 503 错误？
-A: 首次访问时，系统需要初始化数据，请等待几秒后刷新页面。
+**解决方案：**
+1. 检查 [`wrangler.toml`](wrangler.toml:7) 中的 `database_id` 是否正确
+2. 确认已运行数据库迁移：`npm run d1:migrate`
+3. 查看日志：`npm run tail`
 
-### Q: 如何修改导出密码？
-A: 在 `wrangler.toml` 文件中修改 `EXPORT_PASSWORD` 的值，然后重新部署。
+### 问题：写入后无法立即查询
 
-### Q: KV 存储有什么限制？
-A: Cloudflare KV 免费版限制：
-- 每天 100,000 次读取操作
-- 每天 1,000 次写入操作
-- 1 GB 存储空间
-- 对于本项目来说完全够用
+**解决方案：**
+- 如果使用的是 KV，这是正常现象（最终一致性）
+- 建议迁移到 D1 数据库，参考 [迁移指南](MIGRATION_GUIDE.md)
 
-### Q: 如何查看日志？
-A: 使用以下命令查看实时日志：
-```bash
-npx wrangler tail
-```
+### 问题：部署失败
 
-### Q: 如何删除部署？
-A: 使用以下命令：
-```bash
-npx wrangler delete
-```
+**解决方案：**
+1. 确认已登录 Cloudflare：`npx wrangler login`
+2. 检查 `wrangler.toml` 配置是否正确
+3. 查看详细错误信息
 
-## 安全建议
+## 📚 相关文档
 
-1. **修改默认密码**：部署前务必在 `wrangler.toml` 中修改 `EXPORT_PASSWORD`
-2. **限制访问**：考虑使用 Cloudflare Access 限制访问权限
-3. **定期备份**：定期导出 Keys 进行备份
+- [Cloudflare Workers 文档](https://developers.cloudflare.com/workers/)
+- [Cloudflare D1 文档](https://developers.cloudflare.com/d1/)
+- [Wrangler CLI 文档](https://developers.cloudflare.com/workers/wrangler/)
+- [迁移指南](MIGRATION_GUIDE.md)
 
-## 许可证
+## 📄 许可证
 
 MIT License
 
-## 支持
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📮 联系方式
 
 如有问题或建议，请提交 Issue。
