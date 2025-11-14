@@ -1,11 +1,11 @@
-name = "droid-apikey"
+name = "key"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
 # KV Namespace 绑定
 [[kv_namespaces]]
 binding = "API_KEYS"
-id = "YOUR_KV_NAMESPACE_ID"  # 部署前需要运行: npx wrangler kv:namespace create API_KEYS
+id = "a0e60713b4834550aa5d5f7d42ec47e5"  # 部署前需要运行: npx wrangler kv:namespace create API_KEYS
 
 # 环境变量
 [vars]
