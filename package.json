@@ -8,12 +8,11 @@
     "dev:local": "wrangler dev --local",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "kv:create": "wrangler kv:namespace create API_KEYS",
     "d1:create": "wrangler d1 create droid-apikey-db",
-    "d1:migrate": "wrangler d1 execute droid-apikey-db --file=./migrations/0001_create_api_keys_table.sql",
-    "d1:migrate:local": "wrangler d1 execute droid-apikey-db --file=./migrations/0001_create_api_keys_table.sql --local",
-    "d1:query": "wrangler d1 execute droid-apikey-db --command",
-    "d1:backup": "wrangler d1 export droid-apikey-db --output=backup.sql"
+    "d1:migrate": "wrangler d1 execute key --file=./migrations/0001_create_api_keys_table.sql",
+    "d1:migrate:local": "wrangler d1 execute key --file=./migrations/0001_create_api_keys_table.sql --local",
+    "d1:query": "wrangler d1 execute key --command",
+    "d1:backup": "wrangler d1 export key --output=backup.sql"
   },
   "keywords": [
     "cloudflare-workers",
