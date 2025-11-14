@@ -153,6 +153,10 @@ function maskApiKey(key: string): string {
   return `${key.substring(0, CONFIG.KEY_MASK_PREFIX_LENGTH)}...${key.substring(key.length - CONFIG.KEY_MASK_SUFFIX_LENGTH)}`;
 }
 
+function getDisplayKey(key: string, isLoggedIn: boolean): string {
+  return isLoggedIn ? key : maskApiKey(key);
+}
+
 function formatDate(timestamp: number | null | undefined): string {
   if (!timestamp && timestamp !== 0) return 'N/A';
 
@@ -196,13 +200,13 @@ function createErrorResponse(message: string, status = 500): Response {
 }
 
 // HTML content is embedded as a template string
-const HTML_CONTENT = `  
+const HTML_CONTENT = `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API 余额监控看板</title>  
+    <title>API 余额监控看板</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
@@ -212,6 +216,8 @@ const HTML_CONTENT = `
         .header .update-time { font-size: 14px; opacity: 0.9; }
         .manage-btn { position: absolute; top: 30px; right: 30px; background: rgba(255, 255, 255, 0.2); color: white; border: 2px solid white; border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; transition: all 0.3s ease; }
         .manage-btn:hover { background: rgba(255, 255, 255, 0.3); transform: scale(1.05); }
+        .logout-btn { position: absolute; top: 30px; left: 30px; background: rgba(255, 255, 255, 0.2); color: white; border: 2px solid white; border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; transition: all 0.3s ease; }
+        .logout-btn:hover { background: rgba(255, 255, 255, 0.3); transform: scale(1.05); }
         .stats-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; padding: 30px; background: #f8f9fa; }
         .stat-card { background: white; border-radius: 12px; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); transition: transform 0.3s ease, box-shadow 0.3s ease; }
         .stat-card:hover { transform: translateY(-5px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); }
@@ -283,11 +289,47 @@ const HTML_CONTENT = `
         .tab-content.active { display: block; }
         .success-msg { background: #d4edda; color: #155724; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #c3e6cb; }
         .error-msg { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #f5c6cb; }
-    </style>  
-</head>  
+        
+        /* Login page styles */
+        .login-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); z-index: 2000; align-items: center; justify-content: center; }
+        .login-container.show { display: flex; }
+        .login-box { background: white; border-radius: 16px; padding: 40px; width: 90%; max-width: 400px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
+        .login-box h2 { text-align: center; color: #667eea; margin-bottom: 30px; font-size: 28px; }
+        .login-form .form-group { margin-bottom: 20px; }
+        .login-form label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; }
+        .login-form input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+        .login-form .btn-login { width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+        .login-form .btn-login:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .copy-btn { background: #28a745; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; margin-left: 8px; transition: all 0.2s ease; }
+        .copy-btn:hover { background: #218838; transform: scale(1.05); }
+        .copy-btn:active { transform: scale(0.95); }
+        .key-cell-wrapper { display: flex; align-items: center; }
+    </style>
+</head>
 <body>
-    <div class="container">
+    <!-- Login Page -->
+    <div id="loginContainer" class="login-container">
+        <div class="login-box">
+            <h2>🔐 登录验证</h2>
+            <form class="login-form" onsubmit="handleLogin(event)">
+                <div id="loginMessage"></div>
+                <div class="form-group">
+                    <label>账号</label>
+                    <input type="text" id="loginUsername" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="loginPassword" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn-login">登录</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div class="container" id="mainContainer" style="display: none;">
         <div class="header">
+            <button class="logout-btn" onclick="handleLogout()">退出登录</button>
             <button class="manage-btn" onclick="openManageModal()">Key 管理</button>
             <h1>API 余额监控看板</h1>
             <div class="update-time" id="updateTime">正在加载...</div>
@@ -348,21 +390,90 @@ const HTML_CONTENT = `
     <script>
         // Global variable to store current API data
         let currentApiData = null;
+        let isLoggedIn = false;
 
         const formatNumber = (num) => num ? new Intl.NumberFormat('en-US').format(num) : '0';
-        const formatPercentage = (ratio) => ratio ? (ratio * 100).toFixed(2) + '%' : '0.00%';  
+        const formatPercentage = (ratio) => ratio ? (ratio * 100).toFixed(2) + '%' : '0.00%';
+        
+        // Check login status on page load
+        function checkLoginStatus() {
+            const loginStatus = localStorage.getItem('isLoggedIn');
+            if (loginStatus === 'true') {
+                isLoggedIn = true;
+                document.getElementById('loginContainer').classList.remove('show');
+                document.getElementById('mainContainer').style.display = 'block';
+                loadData();
+            } else {
+                isLoggedIn = false;
+                document.getElementById('loginContainer').classList.add('show');
+                document.getElementById('mainContainer').style.display = 'none';
+            }
+        }
+
+        // Handle login
+        async function handleLogin(event) {
+            event.preventDefault();
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const messageDiv = document.getElementById('loginMessage');
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    localStorage.setItem('isLoggedIn', 'true');
+                    isLoggedIn = true;
+                    document.getElementById('loginContainer').classList.remove('show');
+                    document.getElementById('mainContainer').style.display = 'block';
+                    loadData();
+                } else {
+                    messageDiv.innerHTML = '<div class="error-msg">账号或密码错误</div>';
+                    setTimeout(() => { messageDiv.innerHTML = ''; }, 3000);
+                }
+            } catch (error) {
+                messageDiv.innerHTML = '<div class="error-msg">登录失败: ' + error.message + '</div>';
+                setTimeout(() => { messageDiv.innerHTML = ''; }, 3000);
+            }
+        }
+
+        // Handle logout
+        function handleLogout() {
+            if (confirm('确定要退出登录吗？')) {
+                localStorage.removeItem('isLoggedIn');
+                isLoggedIn = false;
+                location.reload();
+            }
+        }
+
+        // Copy key to clipboard
+        function copyKey(key) {
+            navigator.clipboard.writeText(key).then(() => {
+                alert('Key 已复制到剪贴板');
+            }).catch(err => {
+                alert('复制失败: ' + err.message);
+            });
+        }
   
-  
-        function loadData(retryCount = 0) {  
-            const spinner = document.getElementById('spinner');  
-            const btnText = document.getElementById('btnText');  
+        function loadData(retryCount = 0) {
+            const spinner = document.getElementById('spinner');
+            const btnText = document.getElementById('btnText');
                 
-            spinner.style.display = 'inline-block';  
-            btnText.textContent = '加载中...';  
+            spinner.style.display = 'inline-block';
+            btnText.textContent = '加载中...';
   
+            const headers = {};
+            if (isLoggedIn) {
+                headers['X-Logged-In'] = 'true';
+            }
   
-            fetch('/api/data?t=' + new Date().getTime())  
-                .then(response => {  
+            fetch('/api/data?t=' + new Date().getTime(), { headers })
+                .then(response => {
                     // If server is still initializing (503), auto-retry after 2 seconds
                     if (response.status === 503 && retryCount < 5) {
                         console.log(\`Server initializing, retrying in 2 seconds... (attempt \${retryCount + 1}/5)\`);
@@ -370,27 +481,27 @@ const HTML_CONTENT = `
                         setTimeout(() => loadData(retryCount + 1), 2000);
                         return null;
                     }
-                    if (!response.ok) {  
-                        throw new Error('无法加载数据: ' + response.statusText);  
-                    }  
-                    return response.json();  
-                })  
+                    if (!response.ok) {
+                        throw new Error('无法加载数据: ' + response.statusText);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data === null) return; // Skip if retrying
-                    if (data.error) {  
-                        throw new Error(data.error);  
-                    }  
-                    displayData(data);  
-                })  
-                .catch(error => {  
-                    document.getElementById('tableContent').innerHTML = \`<div class="error">❌ 加载失败: \${error.message}</div>\`;  
-                    document.getElementById('updateTime').textContent = "加载失败";  
-                })  
-                .finally(() => {  
-                    spinner.style.display = 'none';  
-                    btnText.textContent = '🔄 刷新数据';  
-                });  
-        }  
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    displayData(data);
+                })
+                .catch(error => {
+                    document.getElementById('tableContent').innerHTML = \`<div class="error">❌ 加载失败: \${error.message}</div>\`;
+                    document.getElementById('updateTime').textContent = "加载失败";
+                })
+                .finally(() => {
+                    spinner.style.display = 'none';
+                    btnText.textContent = '🔄 刷新数据';
+                });
+        }
   
   
         function displayData(data) {
@@ -433,10 +544,17 @@ const HTML_CONTENT = `
 
 
             data.data.forEach(item => {
+                const copyButton = isLoggedIn ? '<button class="copy-btn" onclick="copyKey(\'' + item.key.replace(/'/g, "\\'") + '\')">复制</button>' : '';
+                
                 if (item.error) {
                     tableHTML += \`
                         <tr>
-                            <td class="key-cell" title="\${item.key}">\${item.key}</td>
+                            <td class="key-cell">
+                                <div class="key-cell-wrapper">
+                                    <span title="\${item.key}">\${item.key}</span>
+                                    \${copyButton}
+                                </div>
+                            </td>
                             <td colspan="5" class="error-row">加载失败: \${item.error}</td>
                             <td style="text-align: center;">
                                 <button class="btn btn-primary" onclick="refreshSingleKey('\${item.id}')" style="padding: 6px 12px; font-size: 12px; margin-right: 5px;">刷新</button>
@@ -448,7 +566,12 @@ const HTML_CONTENT = `
                     const remaining = Math.max(0, item.totalAllowance - item.orgTotalTokensUsed);
                     tableHTML += \`
                         <tr id="key-row-\${item.id}">
-                            <td class="key-cell" title="\${item.key}">\${item.key}</td>
+                            <td class="key-cell">
+                                <div class="key-cell-wrapper">
+                                    <span title="\${item.key}">\${item.key}</span>
+                                    \${copyButton}
+                                </div>
+                            </td>
                             <td>\${item.startDate}</td>
                             <td>\${item.endDate}</td>
                             <td class="number">\${formatNumber(item.totalAllowance)}</td>
@@ -473,7 +596,7 @@ const HTML_CONTENT = `
         }  
   
   
-        document.addEventListener('DOMContentLoaded', loadData);
+        document.addEventListener('DOMContentLoaded', checkLoginStatus);
 
         // Modal and Key Management Functions
         function openManageModal() {
@@ -700,9 +823,15 @@ const HTML_CONTENT = `
                 }
             });
 
+            const headers = { 'Content-Type': 'application/json' };
+            if (isLoggedIn) {
+                headers['X-Logged-In'] = 'true';
+            }
+
             try {
                 const response = await fetch(\`/api/keys/\${id}/refresh\`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers
                 });
 
                 const result = await response.json();
@@ -777,8 +906,8 @@ async function batchProcess<T, R>(
 /**
  * Fetches usage data for a single API key with retry logic.
  */
-async function fetchApiKeyData(id: string, key: string, retryCount = 0): Promise<ApiKeyResult> {
-  const maskedKey = maskApiKey(key);
+async function fetchApiKeyData(id: string, key: string, isLoggedIn: boolean = false, retryCount = 0): Promise<ApiKeyResult> {
+  const displayKey = getDisplayKey(key, isLoggedIn);
   const maxRetries = 2;
 
   try {
@@ -793,22 +922,22 @@ async function fetchApiKeyData(id: string, key: string, retryCount = 0): Promise
       if (response.status === 401 && retryCount < maxRetries) {
         const delayMs = (retryCount + 1) * 1000;
         await new Promise(resolve => setTimeout(resolve, delayMs));
-        return fetchApiKeyData(id, key, retryCount + 1);
+        return fetchApiKeyData(id, key, isLoggedIn, retryCount + 1);
       }
-      return { id, key: maskedKey, error: `HTTP ${response.status}` };
+      return { id, key: displayKey, error: `HTTP ${response.status}` };
     }
 
     const apiData: ApiResponse = await response.json();
     const { usage } = apiData;
     
     if (!usage?.standard) {
-      return { id, key: maskedKey, error: 'Invalid API response' };
+      return { id, key: displayKey, error: 'Invalid API response' };
     }
 
     const { standard } = usage;
     return {
       id,
-      key: maskedKey,
+      key: displayKey,
       startDate: formatDate(usage.startDate),
       endDate: formatDate(usage.endDate),
       orgTotalTokensUsed: standard.orgTotalTokensUsed || 0,
@@ -816,9 +945,9 @@ async function fetchApiKeyData(id: string, key: string, retryCount = 0): Promise
       usedRatio: standard.usedRatio || 0,
     };
   } catch (error) {
-    return { id, key: maskedKey, error: 'Failed to fetch' };
+    return { id, key: displayKey, error: 'Failed to fetch' };
   }
-}  
+}
   
   
 // ==================== Type Guards ====================
@@ -830,7 +959,7 @@ const isApiUsageData = (result: ApiKeyResult): result is ApiUsageData => !('erro
 /**
  * Aggregates data from all configured API keys.
  */
-async function getAggregatedData(kv: KVNamespace): Promise<AggregatedResponse> {
+async function getAggregatedData(kv: KVNamespace, isLoggedIn: boolean = false): Promise<AggregatedResponse> {
   const keyPairs = await getAllKeys(kv);
   const beijingTime = getBeijingTime();
   const emptyResponse = {
@@ -844,7 +973,7 @@ async function getAggregatedData(kv: KVNamespace): Promise<AggregatedResponse> {
 
   const results = await batchProcess(
     keyPairs,
-    ({ id, key }) => fetchApiKeyData(id, key),
+    ({ id, key }) => fetchApiKeyData(id, key, isLoggedIn),
     10,
     100
   );
@@ -937,14 +1066,36 @@ function handleRoot(): Response {
  * Handles the /api/data endpoint - returns aggregated usage data.
  * Always fetches fresh data from KV to ensure consistency across requests.
  */
-async function handleGetData(env: Env): Promise<Response> {
+async function handleGetData(req: Request, env: Env): Promise<Response> {
   try {
-    const data = await getAggregatedData(env.API_KEYS);
+    // Check if user is logged in via header
+    const isLoggedIn = req.headers.get('X-Logged-In') === 'true';
+    const data = await getAggregatedData(env.API_KEYS, isLoggedIn);
     return createJsonResponse(data);
   } catch (error) {
     console.error('Error getting data:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to load data';
     return createErrorResponse(errorMessage, 500);
+  }
+}
+
+/**
+ * Handles POST /api/login - validates login credentials.
+ */
+async function handleLogin(req: Request, env: Env): Promise<Response> {
+  try {
+    const { username, password } = await req.json() as { username: string; password: string };
+
+    // Both username and password should match EXPORT_PASSWORD
+    if (username === env.EXPORT_PASSWORD && password === env.EXPORT_PASSWORD) {
+      return createJsonResponse({ success: true });
+    } else {
+      return createErrorResponse("账号或密码错误", 401);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Invalid JSON';
+    console.error('Error during login:', errorMessage);
+    return createErrorResponse(errorMessage, 400);
   }
 }
 
@@ -1077,7 +1228,7 @@ async function handleExportKeys(req: Request, env: Env): Promise<Response> {
 /**
  * Handles POST /api/keys/:id/refresh - refreshes data for a single API key.
  */
-async function handleRefreshSingleKey(pathname: string, env: Env): Promise<Response> {
+async function handleRefreshSingleKey(pathname: string, req: Request, env: Env): Promise<Response> {
   try {
     const id = pathname.split("/api/keys/")[1].replace("/refresh", "");
 
@@ -1092,8 +1243,11 @@ async function handleRefreshSingleKey(pathname: string, env: Env): Promise<Respo
       return createErrorResponse("Key not found", 404);
     }
 
+    // Check if user is logged in
+    const isLoggedIn = req.headers.get('X-Logged-In') === 'true';
+
     // Fetch fresh data for this key
-    const keyData = await fetchApiKeyData(id, key);
+    const keyData = await fetchApiKeyData(id, key, isLoggedIn);
 
     return createJsonResponse({
       success: true,
@@ -1121,7 +1275,12 @@ async function handler(req: Request, env: Env): Promise<Response> {
 
   // Route: GET /api/data - Get aggregated usage data
   if (url.pathname === "/api/data" && req.method === "GET") {
-    return await handleGetData(env);
+    return await handleGetData(req, env);
+  }
+
+  // Route: POST /api/login - Login endpoint
+  if (url.pathname === "/api/login" && req.method === "POST") {
+    return await handleLogin(req, env);
   }
 
   // Route: GET /api/keys - Get all keys
@@ -1151,7 +1310,7 @@ async function handler(req: Request, env: Env): Promise<Response> {
 
   // Route: POST /api/keys/:id/refresh - Refresh single key
   if (url.pathname.match(/^\/api\/keys\/.+\/refresh$/) && req.method === "POST") {
-    return await handleRefreshSingleKey(url.pathname, env);
+    return await handleRefreshSingleKey(url.pathname, req, env);
   }
 
   // 404 for all other routes
