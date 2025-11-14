@@ -196,7 +196,120 @@ function createErrorResponse(message: string, status = 500): Response {
 }
 
 // HTML content is embedded as a template string
-const HTML_CONTENT = `  
+// ==================== Session Management ====================
+
+const sessions = new Map<string, number>(); // token -> expiry timestamp
+const SESSION_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function generateToken(): string {
+  return crypto.randomUUID();
+}
+
+function isValidSession(token: string): boolean {
+  const expiry = sessions.get(token);
+  if (!expiry) return false;
+  if (Date.now() > expiry) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function createSession(): string {
+  const token = generateToken();
+  sessions.set(token, Date.now() + SESSION_DURATION);
+  return token;
+}
+
+function deleteSession(token: string): void {
+  sessions.delete(token);
+}
+
+function getCookie(request: Request, name: string): string | null {
+  const cookies = request.headers.get('Cookie');
+  if (!cookies) return null;
+  const match = cookies.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? match[1] : null;
+}
+
+// ==================== Login Page HTML ====================
+
+const LOGIN_HTML = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - API 余额监控看板</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-container { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); padding: 40px; width: 90%; max-width: 400px; }
+        .login-header { text-align: center; margin-bottom: 30px; }
+        .login-header h1 { font-size: 28px; color: #667eea; margin-bottom: 10px; }
+        .login-header p { color: #6c757d; font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; font-size: 14px; }
+        .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; transition: border-color 0.3s; }
+        .form-group input:focus { outline: none; border-color: #667eea; }
+        .login-btn { width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.3s, box-shadow 0.3s; }
+        .login-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .login-btn:active { transform: translateY(0); }
+        .error-msg { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #f5c6cb; font-size: 14px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>🔐 登录</h1>
+            <p>API 余额监控看板</p>
+        </div>
+        <div id="errorMsg" class="error-msg"></div>
+        <form id="loginForm">
+            <div class="form-group">
+                <label>账号</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="login-btn">登录</button>
+        </form>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('errorMsg');
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    errorMsg.textContent = result.error || '登录失败';
+                    errorMsg.style.display = 'block';
+                }
+            } catch (error) {
+                errorMsg.textContent = '网络错误，请重试';
+                errorMsg.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
+`;
+
+const HTML_CONTENT = `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -927,9 +1040,59 @@ async function autoRefreshData(env: Env) {
 /**
  * Handles the root path - serves the HTML dashboard.
  */
-function handleRoot(): Response {
+function handleRoot(req: Request): Response {
+  const token = getCookie(req, 'session_token');
+  if (!token || !isValidSession(token)) {
+    return new Response(LOGIN_HTML, {
+      headers: { "Content-Type": "text/html; charset=utf-8" }
+    });
+  }
+  
   return new Response(HTML_CONTENT, {
     headers: { "Content-Type": "text/html; charset=utf-8" }
+  });
+}
+
+/**
+ * Handles POST /api/login - authenticates user and creates session.
+ */
+async function handleLogin(req: Request, env: Env): Promise<Response> {
+  try {
+    const { username, password } = await req.json() as { username: string; password: string };
+    
+    if (username !== env.EXPORT_PASSWORD || password !== env.EXPORT_PASSWORD) {
+      return createErrorResponse("账号或密码错误", 401);
+    }
+    
+    const token = createSession();
+    
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": `session_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DURATION / 1000}`
+      }
+    });
+  } catch (error) {
+    return createErrorResponse("请求格式错误", 400);
+  }
+}
+
+/**
+ * Handles POST /api/logout - destroys session.
+ */
+function handleLogout(req: Request): Response {
+  const token = getCookie(req, 'session_token');
+  if (token) {
+    deleteSession(token);
+  }
+  
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Set-Cookie": "session_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+    }
   });
 }
 
@@ -1116,7 +1279,17 @@ async function handler(req: Request, env: Env): Promise<Response> {
 
   // Route: Root path - Dashboard
   if (url.pathname === "/") {
-    return handleRoot();
+    return handleRoot(req);
+  }
+
+  // Route: POST /api/login - Login
+  if (url.pathname === "/api/login" && req.method === "POST") {
+    return await handleLogin(req, env);
+  }
+
+  // Route: POST /api/logout - Logout
+  if (url.pathname === "/api/logout" && req.method === "POST") {
+    return handleLogout(req);
   }
 
   // Route: GET /api/data - Get aggregated usage data
