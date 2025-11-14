@@ -9,7 +9,7 @@ id = "YOUR_KV_NAMESPACE_ID"  # 部署前需要运行: npx wrangler kv:namespace 
 
 # 环境变量
 [vars]
-EXPORT_PASSWORD = "admin123"  # 导出密码，建议修改
+EXPORT_PASSWORD = "zhaoweihao98"  # 导出密码，建议修改
 
 # 开发环境配置
 [env.dev]
