@@ -1,0 +1,24 @@
+{
+  "name": "droid-apikey",
+  "version": "1.0.0",
+  "description": "API Key 余额监控看板 - Cloudflare Workers 版本",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "kv:create": "wrangler kv:namespace create API_KEYS"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "api-monitoring",
+    "dashboard"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.78.12"
+  }
+}
