@@ -366,21 +366,22 @@ const HTML_CONTENT = `
         tfoot { background: #f8f9fa; font-weight: bold; }
         tfoot td { padding: 15px; border-top: 2px solid #667eea; border-bottom: none; }
         .key-cell { color: #495057; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .refresh-btn { position: fixed; bottom: 30px; right: 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 50px; padding: 15px 30px; font-size: 16px; cursor: pointer; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
-        .refresh-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6); }
-        .refresh-btn:active { transform: translateY(0); }
-        .delete-zero-btn { position: fixed; bottom: 95px; right: 30px; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; border-radius: 50px; padding: 15px 30px; font-size: 16px; cursor: pointer; box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
-        .delete-zero-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(220, 53, 69, 0.6); }
-        .delete-zero-btn:active { transform: translateY(0); }
-        .delete-zero-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .delete-all-btn { position: fixed; bottom: 160px; right: 30px; background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; border: none; border-radius: 50px; padding: 15px 30px; font-size: 16px; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
-        .delete-all-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6); }
-        .delete-all-btn:active { transform: translateY(0); }
-        .delete-all-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .export-keys-btn { position: fixed; bottom: 225px; right: 30px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 50px; padding: 15px 30px; font-size: 16px; cursor: pointer; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
-        .export-keys-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(40, 167, 69, 0.6); }
-        .export-keys-btn:active { transform: translateY(0); }
+        .fab-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; z-index: 900; }
+        .fab-toggle { width: 56px; height: 56px; border-radius: 50%; border: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; font-size: 22px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(102, 126, 234, 0.35); display: flex; align-items: center; justify-content: center; transition: transform 0.25s ease, box-shadow 0.25s ease; }
+        .fab-toggle:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(102, 126, 234, 0.45); }
+        .fab-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; max-height: 0; opacity: 0; pointer-events: none; transform: translateY(8px); transition: all 0.25s ease; }
+        .fab-container.open .fab-actions { max-height: 500px; opacity: 1; pointer-events: auto; transform: translateY(0); }
+        .action-btn { width: 190px; display: flex; align-items: center; justify-content: center; gap: 8px; border: none; border-radius: 999px; padding: 14px 18px; font-size: 14px; cursor: pointer; color: white; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.18); transition: all 0.3s ease; }
+        .action-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24); }
+        .action-btn:active { transform: translateY(0); }
+        .export-keys-btn { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); }
         .export-keys-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .delete-all-btn { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); }
+        .delete-all-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .delete-zero-btn { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); }
+        .delete-zero-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .refresh-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .refresh-btn .spinner { width: 18px; height: 18px; }
         .loading { text-align: center; padding: 40px; color: #6c757d; }
         .error { text-align: center; padding: 40px; color: #dc3545; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -444,22 +445,26 @@ const HTML_CONTENT = `
         </div>
     </div>
 
-    <button class="export-keys-btn" onclick="exportKeys()" id="exportKeysBtn">
-        <span>📥 导出Key</span>
-    </button>
-
-    <button class="delete-all-btn" onclick="deleteAllKeys()" id="deleteAllBtn">
-        <span>🗑️ 删除所有</span>
-    </button>
-
-    <button class="delete-zero-btn" onclick="deleteZeroBalanceKeys()" id="deleteZeroBtn">
-        <span>🗑️ 删除无效</span>
-    </button>
-
-    <button class="refresh-btn" onclick="loadData()">
-        <span class="spinner" style="display: none;" id="spinner"></span>
-        <span id="btnText">刷新数据</span>
-    </button>
+    <div class="fab-container" id="fabContainer">
+        <button class="fab-toggle" onclick="toggleFabMenu(event)" aria-expanded="false" aria-controls="fabActions">
+            <span id="fabToggleIcon">☰</span>
+        </button>
+        <div class="fab-actions" id="fabActions">
+            <button class="export-keys-btn action-btn" onclick="closeFabMenu(); exportKeys();" id="exportKeysBtn">
+                <span>📥 导出Key</span>
+            </button>
+            <button class="delete-all-btn action-btn" onclick="closeFabMenu(); deleteAllKeys();" id="deleteAllBtn">
+                <span>🗑️ 删除所有</span>
+            </button>
+            <button class="delete-zero-btn action-btn" onclick="closeFabMenu(); deleteZeroBalanceKeys();" id="deleteZeroBtn">
+                <span>🗑️ 删除无效</span>
+            </button>
+            <button class="refresh-btn action-btn" onclick="closeFabMenu(); loadData();">
+                <span class="spinner" style="display: none;" id="spinner"></span>
+                <span id="btnText">刷新数据</span>
+            </button>
+        </div>
+    </div>
 
     <div id="manageModal" class="modal">
         <div class="modal-content">
@@ -488,6 +493,43 @@ const HTML_CONTENT = `
     <script>
         // Global variable to store current API data
         let currentApiData = null;
+        let fabMenuInitialized = false;
+
+        function closeFabMenu() {
+            const container = document.getElementById('fabContainer');
+            const toggleBtn = document.querySelector('.fab-toggle');
+            const icon = document.getElementById('fabToggleIcon');
+            if (!container) return;
+            container.classList.remove('open');
+            if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
+            if (icon) {
+                icon.textContent = '☰';
+                icon.setAttribute('aria-label', '展开操作');
+            }
+        }
+
+        function toggleFabMenu(event) {
+            event.stopPropagation();
+            const container = document.getElementById('fabContainer');
+            const toggleBtn = document.querySelector('.fab-toggle');
+            const icon = document.getElementById('fabToggleIcon');
+            if (!container) return;
+            const isOpen = container.classList.toggle('open');
+            if (toggleBtn) toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            if (icon) {
+                icon.textContent = isOpen ? '×' : '☰';
+                icon.setAttribute('aria-label', isOpen ? '收起操作' : '展开操作');
+            }
+            if (!fabMenuInitialized) {
+                document.addEventListener('click', (e) => {
+                    const fabContainer = document.getElementById('fabContainer');
+                    if (fabContainer && !fabContainer.contains(e.target)) {
+                        closeFabMenu();
+                    }
+                });
+                fabMenuInitialized = true;
+            }
+        }
 
         const formatNumber = (num) => num ? new Intl.NumberFormat('en-US').format(num) : '0';
         const formatPercentage = (ratio) => ratio ? (ratio * 100).toFixed(2) + '%' : '0.00%';  
