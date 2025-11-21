@@ -221,31 +221,77 @@ function createErrorResponse(message: string, status = 500): Response {
 // HTML content is embedded as a template string
 // ==================== Session Management ====================
 
-const sessions = new Map<string, number>(); // token -> expiry timestamp
 const SESSION_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-function generateToken(): string {
-  return crypto.randomUUID();
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+let cachedHmacKey: CryptoKey | null = null;
+let cachedHmacSecret: string | null = null;
+
+function toBase64Url(data: ArrayBuffer | Uint8Array): string {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function isValidSession(token: string): boolean {
-  const expiry = sessions.get(token);
-  if (!expiry) return false;
-  if (Date.now() > expiry) {
-    sessions.delete(token);
+function fromBase64Url(base64Url: string): Uint8Array {
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(base64Url.length / 4) * 4, '=');
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function getHmacKey(secret: string): Promise<CryptoKey> {
+  if (cachedHmacKey && cachedHmacSecret === secret) return cachedHmacKey;
+
+  cachedHmacKey = await crypto.subtle.importKey(
+    'raw',
+    textEncoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  );
+  cachedHmacSecret = secret;
+  return cachedHmacKey;
+}
+
+async function createSessionToken(secret: string): Promise<string> {
+  const now = Date.now();
+  const payload = { exp: now + SESSION_DURATION, iat: now };
+  const body = toBase64Url(textEncoder.encode(JSON.stringify(payload)));
+  const key = await getHmacKey(secret);
+  const signature = await crypto.subtle.sign('HMAC', key, textEncoder.encode(body));
+  return `${body}.${toBase64Url(signature)}`;
+}
+
+async function isValidSession(token: string, secret: string): Promise<boolean> {
+  const [body, signature] = token.split('.');
+  if (!body || !signature) return false;
+
+  try {
+    const key = await getHmacKey(secret);
+    const validSignature = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      fromBase64Url(signature),
+      textEncoder.encode(body)
+    );
+    if (!validSignature) return false;
+
+    const payloadStr = textDecoder.decode(fromBase64Url(body));
+    const payload = JSON.parse(payloadStr) as { exp?: number };
+    if (!payload?.exp || Date.now() > payload.exp) return false;
+
+    return true;
+  } catch {
     return false;
   }
-  return true;
-}
-
-function createSession(): string {
-  const token = generateToken();
-  sessions.set(token, Date.now() + SESSION_DURATION);
-  return token;
-}
-
-function deleteSession(token: string): void {
-  sessions.delete(token);
 }
 
 function getCookie(request: Request, name: string): string | null {
@@ -1148,9 +1194,9 @@ async function autoRefreshData(env: Env) {
 /**
  * Handles the root path - serves the HTML dashboard.
  */
-function handleRoot(req: Request): Response {
+async function handleRoot(req: Request, env: Env): Promise<Response> {
   const token = getCookie(req, 'session_token');
-  if (!token || !isValidSession(token)) {
+  if (!token || !(await isValidSession(token, env.EXPORT_PASSWORD))) {
     return new Response(LOGIN_HTML, {
       headers: { "Content-Type": "text/html; charset=utf-8" }
     });
@@ -1172,7 +1218,7 @@ async function handleLogin(req: Request, env: Env): Promise<Response> {
       return createErrorResponse("账号或密码错误", 401);
     }
     
-    const token = createSession();
+    const token = await createSessionToken(env.EXPORT_PASSWORD);
     
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -1189,12 +1235,7 @@ async function handleLogin(req: Request, env: Env): Promise<Response> {
 /**
  * Handles POST /api/logout - destroys session.
  */
-function handleLogout(req: Request): Response {
-  const token = getCookie(req, 'session_token');
-  if (token) {
-    deleteSession(token);
-  }
-  
+function handleLogout(_req: Request): Response {
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
     headers: {
@@ -1406,7 +1447,7 @@ async function handler(req: Request, env: Env): Promise<Response> {
 
   // Route: Root path - Dashboard
   if (url.pathname === "/") {
-    return handleRoot(req);
+    return await handleRoot(req, env);
   }
 
   // Route: POST /api/login - Login
