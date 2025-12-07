@@ -345,6 +345,9 @@ const LOGIN_HTML = `
             </div>
             <button type="submit" class="login-btn">登录</button>
         </form>
+        <div style="margin-top: 14px; text-align: center; font-size: 14px; color: #6c757d;">
+            <a href="/public" style="color: #667eea; text-decoration: none;">无需登录？前往公共查询</a>
+        </div>
     </div>
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -373,6 +376,313 @@ const LOGIN_HTML = `
                 errorMsg.style.display = 'block';
             }
         });
+    </script>
+</body>
+</html>
+`;  
+
+// ==================== Public Query Page HTML ====================
+
+const PUBLIC_HTML = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公共 API Key 查询</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .header h1 { font-size: 32px; margin-bottom: 6px; }
+        .header .update-time { font-size: 14px; opacity: 0.9; }
+        .link-btn { color: white; text-decoration: none; font-weight: 600; border: 2px solid rgba(255,255,255,0.6); padding: 10px 16px; border-radius: 10px; transition: all 0.25s ease; background: rgba(255,255,255,0.15); }
+        .link-btn:hover { background: rgba(255,255,255,0.25); transform: translateY(-1px); }
+        .content { padding: 20px 30px 30px 30px; background: #f8f9fa; }
+        .card { background: white; border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border: 1px solid #e9ecef; margin-bottom: 18px; }
+        .card-title { font-size: 18px; font-weight: 700; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+        .badge { display: inline-block; padding: 6px 10px; border-radius: 999px; font-size: 12px; background: #f1f3f5; color: #495057; }
+        .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+        .form-group { flex: 1; min-width: 320px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; }
+        .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; }
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { padding: 12px 20px; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; font-weight: 600; transition: all 0.2s ease; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(102, 126, 234, 0.35); }
+        .btn-secondary { background: #f1f3f5; color: #495057; border: 1px solid #e9ecef; }
+        .btn-secondary:hover { background: #e9ecef; }
+        .status { margin-top: 12px; font-size: 14px; color: #6c757d; }
+        .status.error { color: #d32f2f; }
+        .stats-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; background: #f8f9fa; }
+        .stat-card { background: white; border-radius: 12px; padding: 18px; text-align: center; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+        .stat-card .label { font-size: 13px; color: #6c757d; margin-bottom: 6px; font-weight: 500; }
+        .stat-card .value { font-size: 22px; font-weight: bold; color: #667eea; }
+        .table-container { margin-top: 14px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
+        thead { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        th { padding: 14px; text-align: left; font-weight: 600; font-size: 14px; white-space: nowrap; }
+        th.number { text-align: right; }
+        td { padding: 12px 14px; border-bottom: 1px solid #e9ecef; font-size: 14px; }
+        td.number { text-align: right; font-weight: 500; }
+        tbody tr:hover { background-color: #f8f9fa; }
+        tbody tr:last-child td { border-bottom: none; }
+        td.error-row { color: #dc3545; }
+        .ops-btn { padding: 8px 14px; border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; }
+        .ops-btn.refresh { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .ops-btn.delete { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); margin-left: 6px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>公共 API Key 查询</h1>
+                <div class="update-time" id="updateTime">无需登录，Key 仅保存在当前浏览器的 localStorage，不会写入服务器</div>
+            </div>
+            <a class="link-btn" href="/">返回私有仪表盘</a>
+        </div>
+
+        <div class="content">
+            <div class="card">
+                <div class="card-title">
+                    公共 Key 查询
+                    <span class="badge">不入库 · 不登录</span>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="publicKeyInput">公共 API Key</label>
+                        <input id="publicKeyInput" type="text" placeholder="fk-xxxxxxxx" autocomplete="off" />
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="queryPublicUsage()">查询用量</button>
+                        <button class="btn btn-secondary" onclick="clearSavedKey()">清除保存</button>
+                    </div>
+                </div>
+                <div class="status" id="statusText">请输入公共 Key 并点击查询</div>
+            </div>
+
+            <div class="stats-cards" id="statsCards"></div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>API Key</th>
+                            <th>开始时间</th>
+                            <th>结束时间</th>
+                            <th class="number">总计额度</th>
+                            <th class="number">已使用</th>
+                            <th class="number">剩余额度</th>
+                            <th class="number">使用百分比</th>
+                            <th style="text-align:center;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="8" style="text-align:center; padding: 20px;">暂无数据，请查询</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const publicKeyInput = document.getElementById('publicKeyInput');
+        const statusText = document.getElementById('statusText');
+        const tableBody = document.getElementById('tableBody');
+        const statsCards = document.getElementById('statsCards');
+        const updateTime = document.getElementById('updateTime');
+
+        const STORAGE_KEY = 'public_api_keys';
+
+        const formatNumber = (num) => num ? new Intl.NumberFormat('en-US').format(num) : '0';
+        const formatPercentage = (ratio) => ratio ? (ratio * 100).toFixed(2) + '%' : '0.00%';
+        const maskDisplay = (key) => {
+            if (!key) return 'N/A';
+            return key.length > 10 ? \`\${key.slice(0, 4)}...\${key.slice(-4)}\` : key;
+        };
+
+        function getStoredList() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch {
+                return [];
+            }
+        }
+
+        function saveList(list) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+        }
+
+        function setStatus(message, isError = false) {
+            statusText.textContent = message;
+            statusText.className = 'status' + (isError ? ' error' : '');
+        }
+
+        function clearSavedKey() {
+            saveList([]);
+            localStorage.removeItem('public_api_key');
+            publicKeyInput.value = '';
+            tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 20px;">已清除本地保存的 Key 列表</td></tr>';
+            statsCards.innerHTML = '';
+            setStatus('已清除本地保存的 Key 列表');
+        }
+
+        function renderStats(latestItem) {
+            if (!latestItem || latestItem.error) {
+                statsCards.innerHTML = '';
+                return;
+            }
+            const remaining = Math.max(0, (latestItem.totalAllowance || 0) - (latestItem.orgTotalTokensUsed || 0));
+            statsCards.innerHTML = \`
+                <div class="stat-card"><div class="label">总计额度 (Total Allowance)</div><div class="value">\${formatNumber(latestItem.totalAllowance || 0)}</div></div>
+                <div class="stat-card"><div class="label">已使用 (Total Used)</div><div class="value">\${formatNumber(latestItem.orgTotalTokensUsed || 0)}</div></div>
+                <div class="stat-card"><div class="label">剩余额度 (Remaining)</div><div class="value">\${formatNumber(remaining)}</div></div>
+                <div class="stat-card"><div class="label">使用百分比 (Usage %)</div><div class="value">\${formatPercentage(latestItem.usedRatio)}</div></div>
+            \`;
+        }
+
+        function renderTable(list) {
+            if (!list.length) {
+                tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 20px;">暂无数据，请查询</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = list.map((item, index) => {
+                const displayKey = maskDisplay(item.key || item.originalKey);
+
+                if (item.loading) {
+                    return \`
+                        <tr>
+                            <td title="\${item.originalKey || ''}"><span>\${displayKey}</span></td>
+                            <td colspan="6" style="text-align:center;">加载中...</td>
+                            <td style="text-align:center;">
+                                <button class="ops-btn delete" onclick="deleteRow(\${index})">删除</button>
+                            </td>
+                        </tr>
+                    \`;
+                }
+
+                if (item.error) {
+                    return \`
+                        <tr>
+                            <td title="\${item.originalKey || ''}"><span>\${displayKey}</span></td>
+                            <td colspan="5" class="error-row">查询失败：\${item.error}</td>
+                            <td class="number">-</td>
+                            <td style="text-align:center;">
+                                <button class="ops-btn refresh" onclick="refreshRow(\${index})">刷新</button>
+                                <button class="ops-btn delete" onclick="deleteRow(\${index})">删除</button>
+                            </td>
+                        </tr>
+                    \`;
+                }
+
+                const remaining = Math.max(0, (item.totalAllowance || 0) - (item.orgTotalTokensUsed || 0));
+                return \`
+                    <tr>
+                        <td title="\${item.originalKey || ''}"><span>\${displayKey}</span></td>
+                        <td>\${item.startDate || 'N/A'}</td>
+                        <td>\${item.endDate || 'N/A'}</td>
+                        <td class="number">\${formatNumber(item.totalAllowance || 0)}</td>
+                        <td class="number">\${formatNumber(item.orgTotalTokensUsed || 0)}</td>
+                        <td class="number">\${formatNumber(remaining)}</td>
+                        <td class="number">\${formatPercentage(item.usedRatio)}</td>
+                        <td style="text-align:center;">
+                            <button class="ops-btn refresh" onclick="refreshRow(\${index})">刷新</button>
+                            <button class="ops-btn delete" onclick="deleteRow(\${index})">删除</button>
+                        </td>
+                    </tr>
+                \`;
+            }).join('');
+        }
+
+        async function refreshRow(index) {
+            const list = getStoredList();
+            if (!list[index]) return;
+            const key = list[index].originalKey || list[index].key;
+            if (!key) return;
+            setStatus('刷新中...', false);
+            await queryPublicUsage(false, key, index);
+        }
+
+        function deleteRow(index) {
+            const list = getStoredList();
+            list.splice(index, 1);
+            saveList(list);
+            renderTable(list);
+            renderStats(list[list.length - 1]);
+            setStatus('已删除该条记录');
+        }
+
+        async function queryPublicUsage(isAuto = false, customKey = '', replaceIndex = -1) {
+            const keyToUse = (customKey || publicKeyInput.value || '').trim();
+            if (!keyToUse) {
+                setStatus('请输入公共 API Key', true);
+                return;
+            }
+
+            setStatus(isAuto ? '自动查询中，请稍候...' : '查询中，请稍候...');
+            let list = getStoredList();
+            const targetIndex = replaceIndex >= 0
+                ? replaceIndex
+                : list.findIndex(item => (item.originalKey || item.key) === keyToUse) >= 0
+                    ? list.findIndex(item => (item.originalKey || item.key) === keyToUse)
+                    : list.length;
+
+            list[targetIndex] = { key: keyToUse, loading: true, originalKey: keyToUse };
+            saveList(list);
+            renderTable(list);
+
+            try {
+                const response = await fetch('/api/public/usage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: keyToUse })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || result.error) {
+                    throw new Error(result.error || '查询失败');
+                }
+
+                const data = result.data;
+                const entry = {
+                    ...data,
+                    originalKey: keyToUse,
+                    queriedAt: new Date().toISOString()
+                };
+                list = getStoredList();
+                list[targetIndex] = entry;
+                saveList(list);
+                renderTable(list);
+                renderStats(list[list.length - 1]);
+                if (data && data.error) {
+                    setStatus('查询失败：' + data.error, true);
+                } else {
+                    setStatus(isAuto ? '自动查询完成' : '查询成功');
+                }
+                updateTime.textContent = '最后更新: ' + (new Date().toISOString().replace('T', ' ').split('.')[0]) + ' | 公共查询';
+            } catch (error) {
+                setStatus('查询失败：' + (error instanceof Error ? error.message : String(error)), true);
+                list = getStoredList();
+                list[targetIndex] = { key: maskDisplay(keyToUse), error: error instanceof Error ? error.message : String(error), originalKey: keyToUse };
+                saveList(list);
+                renderTable(list);
+                renderStats(list[list.length - 1]);
+            }
+        }
+
+        (function init() {
+            const list = getStoredList();
+            renderTable(list);
+            if (list.length) {
+                renderStats(list[list.length - 1]);
+                refreshRow(list.length - 1);
+            }
+        })();
     </script>
 </body>
 </html>
@@ -1192,6 +1502,30 @@ async function autoRefreshData(env: Env) {
 // ==================== Route Handlers ====================
 
 /**
+ * Handles POST /api/public/usage - fetch usage for a single public key without login or D1 access.
+ */
+async function handlePublicUsage(req: Request): Promise<Response> {
+  try {
+    const { key } = await req.json() as { key?: string };
+    const trimmedKey = (key || '').trim();
+
+    if (!trimmedKey) {
+      return createErrorResponse("key is required", 400);
+    }
+
+    const keyData = await fetchApiKeyData(`public-${Date.now()}`, trimmedKey);
+    if ('error' in keyData) {
+      return createJsonResponse({ success: false, error: keyData.error, data: keyData }, 400);
+    }
+
+    return createJsonResponse({ success: true, data: keyData });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Invalid JSON';
+    return createErrorResponse(errorMessage, 400);
+  }
+}
+
+/**
  * Handles the root path - serves the HTML dashboard.
  */
 async function handleRoot(req: Request, env: Env): Promise<Response> {
@@ -1448,6 +1782,18 @@ async function handler(req: Request, env: Env): Promise<Response> {
   // Route: Root path - Dashboard
   if (url.pathname === "/") {
     return await handleRoot(req, env);
+  }
+
+  // Route: GET /public - Public query page
+  if (url.pathname === "/public" && req.method === "GET") {
+    return new Response(PUBLIC_HTML, {
+      headers: { "Content-Type": "text/html; charset=utf-8" }
+    });
+  }
+
+  // Route: POST /api/public/usage - Public key usage query
+  if (url.pathname === "/api/public/usage" && req.method === "POST") {
+    return await handlePublicUsage(req);
   }
 
   // Route: POST /api/login - Login
